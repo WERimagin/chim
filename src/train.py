@@ -89,7 +89,7 @@ model = Model(word_size, label_size, category_sizes,
               inject_type, inject_locs, chunk_ratio=basis, basis=basis)
 with torch.no_grad():
     model.embedding.weight.set_(torch.from_numpy(word_vectors).float())
-model.to(device)
+model.cuda()
 optimizer = torch.optim.Adadelta(model.parameters())
 #if os.path.exists(model_file):
 #    best_point = torch.load(model_file)
