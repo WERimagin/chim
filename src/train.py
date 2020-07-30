@@ -124,8 +124,6 @@ for epoch in range(num_epoch):
 
     losses = []
     for i in tqdm(range(0, len(x_train), batch_size)):
-        if i>=10:
-            exit()
         model.train()
 
         x_batch, m_batch = utils.pad(x_shuffle[i:i+batch_size])
