@@ -123,7 +123,7 @@ for epoch in range(num_epoch):
     y_shuffle = np.array(y_train)[shuffle_indices]
 
     losses = []
-    for i in tqdm(range(0, len(x_train), batch_size)):
+    for i in range(0, len(x_train), batch_size):
         model.train()
 
         x_batch, m_batch = utils.pad(x_shuffle[i:i+batch_size])
@@ -143,13 +143,14 @@ for epoch in range(num_epoch):
         optimizer.step()
 
         #evaluate_everyステップごとに評価を行う。
+        #これはtrain数の1/10,つまり3epochの間精度が更新されなかったら終了
         eval_at -= len(x_batch)
         if eval_at <= 0:
             avg_loss = np.mean(losses)
             dev_acc = 0
             dev_rmse = 0
             with torch.no_grad():
-                for j in tqdm(range(0, len(x_dev), batch_size)):
+                for j in range(0, len(x_dev), batch_size):
                     model.eval()
 
                     x_batch, m_batch = utils.pad(x_dev[j:j+batch_size])
