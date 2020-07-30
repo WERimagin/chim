@@ -8,6 +8,9 @@ from tqdm import tqdm
 import sys
 import os
 
+from model import Classifier as Model
+import utils
+
 dim = int(sys.argv[4])
 word_dim = 300
 embed_dim = dim
@@ -35,7 +38,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = device
 file_dir = 'data/' + data_type + '/'
 train_file = file_dir + '/train.txt'
 dev_file = file_dir + '/dev.txt'
-vec_file = 'data/glove.txt'
+#vec_file = 'data/glove.txt'
+vec_file="../data/glove.840B.300d.txt"
 
 pickle_ext = file_dir + '/data'
 vector_pickle = pickle_ext + '.vec.p'
@@ -46,20 +50,22 @@ model_file = file_dir + '/model.' + inject_type + '.' + '_'.join(inject_locs) + 
 if 'none' in inject_locs:
     inject_locs = []
 
-from model import Classifier as Model
-import utils
+#device=torch.device("cpu")
+
 
 def to_tensor(x, device=device):
     x = np.array(x)
     x = torch.from_numpy(x)
     return x.cuda()
 
+#データ読み込み
 if os.path.isfile(vector_pickle):
     word_vectors, word_dict, category_dicts, label_dict = pickle.load(open(vector_pickle, 'rb'))
 else:
     word_vectors, word_dict, category_dicts, label_dict = utils.get_vectors(train_file, num_categories, vec_file, word_dim)
     pickle.dump([word_vectors, word_dict, category_dicts, label_dict], open(vector_pickle, 'wb'), protocol=4)
 
+#
 if os.path.isfile(train_pickle):
     train_data = pickle.load(open(train_pickle, 'rb'))
 else:
@@ -76,12 +82,14 @@ category_sizes = [len(category_dict) for category_dict in category_dicts]
 label_size = len(label_dict)
 word_size = len(word_dict)
 
+
+#モデル読み込み
 model = Model(word_size, label_size, category_sizes,
               word_dim, embed_dim, hidden_dim, category_dim,
               inject_type, inject_locs, chunk_ratio=basis, basis=basis)
 with torch.no_grad():
     model.embedding.weight.set_(torch.from_numpy(word_vectors).float())
-model.cuda()
+model.to(device)
 optimizer = torch.optim.Adadelta(model.parameters())
 #if os.path.exists(model_file):
 #    best_point = torch.load(model_file)
@@ -103,6 +111,8 @@ eval_at = evaluate_every
 stop_at = training_stopper
 
 rev_label_dict = {label_dict[label]:label for label in label_dict}
+
+#訓練
 for epoch in range(num_epoch):
     if stop_at <= 0:
         break
@@ -114,6 +124,8 @@ for epoch in range(num_epoch):
 
     losses = []
     for i in tqdm(range(0, len(x_train), batch_size)):
+        if i>=10:
+            exit()
         model.train()
 
         x_batch, m_batch = utils.pad(x_shuffle[i:i+batch_size])
@@ -132,6 +144,7 @@ for epoch in range(num_epoch):
         nn.utils.clip_grad_norm_(model.parameters(), 3)
         optimizer.step()
 
+        #evaluate_everyステップごとに評価を行う。
         eval_at -= len(x_batch)
         if eval_at <= 0:
             avg_loss = np.mean(losses)

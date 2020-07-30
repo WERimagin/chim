@@ -1,5 +1,5 @@
 import numpy as np
-import fastText as fasttext
+#import fastText as fasttext
 from tqdm import tqdm
 
 def get_vectors(train_file, num_categories, vec_file, word_dim, with_label=True, count=5):
@@ -10,7 +10,7 @@ def get_vectors(train_file, num_categories, vec_file, word_dim, with_label=True,
     f = open(train_file, 'r', encoding='utf-8', errors='ignore')
     for line in f:
         spl = line.strip().lower().split('\t\t')
-        
+
         # get categories
         for i in range(num_categories):
             categories = spl[i].split(',')
@@ -44,7 +44,7 @@ def get_vectors(train_file, num_categories, vec_file, word_dim, with_label=True,
     print('Number of Words:', len(word_dict))
 
     word_vectors = np.random.uniform(-0.1, 0.1, (len(word_dict), word_dim))
-    
+
     f = open(vec_file, 'r', encoding='utf-8', errors='ignore')
     #f.readline()
     for line in tqdm(f):

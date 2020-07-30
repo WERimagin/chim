@@ -37,6 +37,11 @@ class Classifier(nn.Module):
             category_embeds.append(nn.Embedding(category_size, category_dim//len(category_sizes)))
         self.category_embeds = nn.ModuleList(category_embeds)
 
+
+        #emb,enc,pool,classifyごとに定義
+        #違うのはパラメーター数だけなので、纏めることも可能(encのforwardとbackwardだけは少し処理が必要)
+
+        #emb
         self.embedding = nn.Embedding(word_size, word_dim, padding_idx=0)
         if 'embed' in inject_locs:
             if inject_type == 'bias':
@@ -53,6 +58,8 @@ class Classifier(nn.Module):
         else:
             self.embed_transform = nn.Linear(word_dim, embed_dim)
 
+
+        #encode
         if 'encode' in inject_locs:
             if inject_type == 'bias':
                 self.encode_f_transform = nn.Linear(category_dim, 4*hidden_dim)
@@ -75,6 +82,8 @@ class Classifier(nn.Module):
             self.encode_f_transform = nn.Linear(embed_dim+hidden_dim, 4*hidden_dim)
             self.encode_b_transform = nn.Linear(embed_dim+hidden_dim, 4*hidden_dim)
 
+
+        #pool
         self.pool_latent = nn.Linear(hidden_dim, 1)
         if 'pool' in inject_locs:
             if inject_type == 'bias':
@@ -91,6 +100,8 @@ class Classifier(nn.Module):
         else:
             self.pool_transform = nn.Linear(2*hidden_dim, hidden_dim)
 
+
+        #classify
         if 'classify' in inject_locs:
             if inject_type == 'bias':
                 self.classify_transform = nn.Linear(category_dim, label_size)
@@ -108,6 +119,7 @@ class Classifier(nn.Module):
 
         self.dropout = nn.Dropout(drop_prob)
 
+        #param_init
         for _, p in self.named_parameters():
             if len(p.size()) == 1:
                 nn.init.constant_(p, 0)
@@ -118,31 +130,43 @@ class Classifier(nn.Module):
         batch_size, sequence_len = input.size()
 
         if self.inject_type != 'none':
+
+            #categoryごとにembeddingしてあとでconcat
+            #それぞれのサイズはembedding/len(categories)
             cs = []
             for i, category_embed in enumerate(self.category_embeds):
                 cs.append(category_embed(categories[:,i]))
             cs = torch.cat(cs, dim=-1)
             cs = self.dropout(cs)
 
+        #lstmのembedding
         ws = self.embedding(input)
         ws = self.dropout(ws)
+
         if 'embed' in self.inject_locs:
             if self.inject_type == 'bias':
                 embed_bias = self.embed_transform(cs).view(batch_size, 1, self.embed_dim)
+                #linearの代わりに作ったweightを使ってmatmul、理由はbiasを二回足すのを防ぐため。
                 ws = torch.tanh(torch.matmul(ws, self.embed_weight) + embed_bias)
             if 'weight' in self.inject_type:
                 if 'chunk' in self.inject_type:
+                    #categoryのweightを(batch,word_dim/chunk_ratio,embed_dim/chunk_ratio)に変換し、あとでrepeat
                     embed_weight = self.embed_transform(cs).view(batch_size, self.word_dim//self.chunk_ratio, self.embed_dim//self.chunk_ratio)
                     embed_weight = embed_weight.repeat(1, self.chunk_ratio, self.chunk_ratio)
                 else:
+                    #categoryのweightを(batch,word_dim,embed_dim)に変換し、これをweightとして使用
                     embed_weight = self.embed_transform(cs).view(batch_size, self.word_dim, self.embed_dim)
                 if 'imp' in self.inject_type:
+                    #sigmoidしてembed_weight(word_dim*embed_weight)を掛ける。
                     embed_weight = torch.sigmoid(embed_weight) * self.embed_weight
+                #categoryから導出したweightをmatbulで掛ける
                 ws = torch.tanh(torch.matmul(ws, embed_weight) + self.embed_bias)
         else:
-            ws = torch.tanh(self.embed_transform(ws))
+            ws = torch.tanh(self.embed_transform(ws)) #300->300の後tanh
         ws = self.dropout(ws)
 
+        #lstmのencode（正順）
+        #初期化
         hl = cl = ws.new_zeros(batch_size, self.hidden_dim)
         hls = []
         if 'encode' in self.inject_locs:
@@ -156,12 +180,14 @@ class Classifier(nn.Module):
                     encode_f_weight = self.encode_f_transform(cs).view(batch_size, self.embed_dim+self.hidden_dim, 4*self.hidden_dim)
                 if 'imp' in self.inject_type:
                     encode_f_weight = torch.sigmoid(encode_f_weight) * self.encode_f_weight
+        #単語ごと
         for t in range(sequence_len):
             wt = ws[:,t]
             wht = torch.cat([wt,hl], dim=-1)
             if 'encode' in self.inject_locs:
                 if self.inject_type == 'bias':
                     ft, it, ot, ut = (torch.matmul(wht, self.encode_f_weight) + encode_f_bias).chunk(4, -1)
+                #lstm_cellに投げる前のword_embとhidden_embを足したものにweight_matrixを掛ける
                 if 'weight' in self.inject_type:
                     wht = wht.view(batch_size, 1, -1)
                     ft, it, ot, ut = (torch.matmul(wht, encode_f_weight) + self.encode_f_bias).squeeze(1).chunk(4, -1)
@@ -171,6 +197,8 @@ class Classifier(nn.Module):
             hls = hls + [hl]
         hls = torch.stack(hls, dim=1)
 
+        #lstmのencode（逆順）
+        #初期化
         hr = cr = ws.new_zeros(batch_size, self.hidden_dim)
         hrs = []
         if 'encode' in self.inject_locs:
@@ -184,6 +212,7 @@ class Classifier(nn.Module):
                     encode_b_weight = self.encode_b_transform(cs).view(batch_size, self.embed_dim+self.hidden_dim, 4*self.hidden_dim)
                 if 'imp' in self.inject_type:
                     encode_b_weight = torch.sigmoid(encode_b_weight) * self.encode_b_weight
+        #単語ごと（逆順)
         for t in reversed(range(sequence_len)):
             wt = ws[:,t]
             wht = torch.cat([wt,hr], dim=-1)
@@ -200,6 +229,7 @@ class Classifier(nn.Module):
         hrs = torch.stack(hrs, dim=1)
         hs = torch.cat([hls, hrs], dim=-1)
 
+        #lstmのpool(attentionして重み和)
         if 'pool' in self.inject_locs:
             if self.inject_type == 'bias':
                 pool_bias = self.pool_transform(cs).view(batch_size, 1, self.hidden_dim)
@@ -212,6 +242,7 @@ class Classifier(nn.Module):
                     pool_weight = self.pool_transform(cs).view(batch_size, 2*self.hidden_dim, self.hidden_dim)
                 if 'imp' in self.inject_type:
                     pool_weight = torch.sigmoid(pool_weight) * self.pool_weight
+                #hidden_stateに対してweight_matrixを掛ける
                 e = torch.tanh(torch.matmul(hs, pool_weight) + self.pool_bias)
         else:
             e = torch.tanh(self.pool_transform(hs))
@@ -221,6 +252,7 @@ class Classifier(nn.Module):
         h = torch.sum(a*hs, dim=1)
         h = self.dropout(h)
 
+        #lstmのclassify
         if 'classify' in self.inject_locs:
             if self.inject_type == 'bias':
                 classify_bias = self.classify_transform(cs).view(batch_size, self.label_size)
@@ -233,6 +265,7 @@ class Classifier(nn.Module):
                     classify_weight = self.classify_transform(cs).view(batch_size, self.classify_dim, self.label_size)
                 if 'imp' in self.inject_type:
                     classify_weight = torch.sigmoid(classify_weight) * self.classify_weight
+                #poolしたものに対してweight_matrixを掛ける
                 h = h.view(batch_size, 1, self.classify_dim)
                 p = torch.matmul(h, classify_weight).squeeze(1) + self.classify_bias
         else:
