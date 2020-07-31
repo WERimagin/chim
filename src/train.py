@@ -22,7 +22,7 @@ batch_size = 32
 #evaluate_every = 10000
 #training_stopper = 30
 evaluate_every = 100
-training_stopper = 2
+training_stopper = 1
 best_dev_acc = 0
 best_rmse = 100
 best_test_acc = 0
@@ -155,7 +155,6 @@ rev_label_dict = {label_dict[label]:label for label in label_dict}
 
 #訓練
 for epoch in range(num_epoch):
-    print(stop_at)
     if stop_at <= 0:
         break
 
@@ -166,6 +165,7 @@ for epoch in range(num_epoch):
 
     losses = []
     for i in range(0, len(x_train), batch_size):
+        print(eval_at)
         model.train()
 
         x_batch, m_batch = utils.pad(x_shuffle[i:i+batch_size])
