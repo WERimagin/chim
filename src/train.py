@@ -19,10 +19,14 @@ category_dim = dim
 
 num_epoch = 300
 batch_size = 32
-evaluate_every = 10000
-training_stopper = 30
+#evaluate_every = 10000
+#training_stopper = 30
+evaluate_every = 10
+training_stopper = 1
 best_dev_acc = 0
 best_rmse = 100
+best_test_acc = 0
+best_test_rmse = 100
 
 num_categories = 2
 basis = 0
@@ -38,6 +42,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = device
 file_dir = 'data/' + data_type + '/'
 train_file = file_dir + '/train.txt'
 dev_file = file_dir + '/dev.txt'
+test_file = file_dir + '/test.txt'
 #vec_file = 'data/glove.txt'
 vec_file="../data/glove.840B.300d.txt"
 
@@ -45,6 +50,7 @@ pickle_ext = file_dir + '/data'
 vector_pickle = pickle_ext + '.vec.p'
 train_pickle = pickle_ext + '.train.p'
 dev_pickle = pickle_ext + '.dev.p'
+test_pickle = pickle_ext + '.test.p'
 model_file = file_dir + '/model.' + inject_type + '.' + '_'.join(inject_locs) + '.' + str(basis) + '.' + str(dim)
 
 if 'none' in inject_locs:
@@ -57,6 +63,32 @@ def to_tensor(x, device=device):
     x = np.array(x)
     x = torch.from_numpy(x)
     return x.cuda()
+
+def test(x_dev,c_dev,y_dev,batch_size,model):
+    dev_acc = 0
+    dev_rmse = 0
+    with torch.no_grad():
+        for j in range(0, len(x_dev), batch_size):
+            model.eval()
+
+            x_batch, m_batch = utils.pad(x_dev[j:j+batch_size])
+            x_batch = to_tensor(x_batch)
+            m_batch = to_tensor(m_batch).float()
+            c_batch = to_tensor(c_dev[j:j+batch_size])
+            y_batch = to_tensor(y_dev[j:j+batch_size])
+
+            p_batch = model(x_batch, m_batch, c_batch).max(1)[1]
+            dev_acc += p_batch.eq(y_batch).long().sum().item()
+
+            p_batch = p_batch.cpu().detach().numpy()
+            p_batch = np.array([int(rev_label_dict[p]) for p in p_batch])
+            y_batch = y_batch.cpu().detach().numpy()
+            y_batch = np.array([int(rev_label_dict[y]) for y in y_batch])
+            dev_rmse += np.sum((p_batch-y_batch) ** 2)
+    dev_acc /= len(x_dev)
+    dev_rmse = np.sqrt(dev_rmse/len(x_dev))
+
+    return dev_acc,dev_rmse
 
 #データ読み込み
 if os.path.isfile(vector_pickle):
@@ -77,6 +109,12 @@ if os.path.isfile(dev_pickle):
 else:
     dev_data = utils.get_data(dev_file, word_dict, category_dicts, label_dict)
     pickle.dump(dev_data, open(dev_pickle, 'wb'), protocol=4)
+
+if os.path.isfile(test_pickle):
+    test_data = pickle.load(open(test_pickle, 'rb'))
+else:
+    test_data = utils.get_data(test_file, word_dict, category_dicts, label_dict)
+    pickle.dump(test_data, open(test_pickle, 'wb'), protocol=4)
 
 category_sizes = [len(category_dict) for category_dict in category_dicts]
 label_size = len(label_dict)
@@ -104,6 +142,9 @@ y_train = train_data['y']
 x_dev = dev_data['x']
 c_dev = dev_data['c']
 y_dev = dev_data['y']
+x_test = test_data['x']
+c_test = test_data['c']
+y_test = test_data['y']
 
 evaluate_every = len(x_train) // 10
 
@@ -147,32 +188,16 @@ for epoch in range(num_epoch):
         eval_at -= len(x_batch)
         if eval_at <= 0:
             avg_loss = np.mean(losses)
-            dev_acc = 0
-            dev_rmse = 0
-            with torch.no_grad():
-                for j in range(0, len(x_dev), batch_size):
-                    model.eval()
+            dev_acc,dev_rmse=test(x_dev,c_dev,y_dev,batch_size,model)
+            test_acc,test_rmse=test(x_test,c_test_y_test,batch_size,model)
 
-                    x_batch, m_batch = utils.pad(x_dev[j:j+batch_size])
-                    x_batch = to_tensor(x_batch)
-                    m_batch = to_tensor(m_batch).float()
-                    c_batch = to_tensor(c_dev[j:j+batch_size])
-                    y_batch = to_tensor(y_dev[j:j+batch_size])
-
-                    p_batch = model(x_batch, m_batch, c_batch).max(1)[1]
-                    dev_acc += p_batch.eq(y_batch).long().sum().item()
-
-                    p_batch = p_batch.cpu().detach().numpy()
-                    p_batch = np.array([int(rev_label_dict[p]) for p in p_batch])
-                    y_batch = y_batch.cpu().detach().numpy()
-                    y_batch = np.array([int(rev_label_dict[y]) for y in y_batch])
-                    dev_rmse += np.sum((p_batch-y_batch) ** 2)
-            dev_acc /= len(x_dev)
-            dev_rmse = np.sqrt(dev_rmse/len(x_dev))
 
             if best_dev_acc <= dev_acc:
                 best_dev_acc = dev_acc
                 best_rmse = dev_rmse
+                best_test_acc = test_acc
+                best_test_rmse = test_rmse
+
                 stop_at = training_stopper
                 torch.save({
                     'state_dict': model.state_dict(),
@@ -182,8 +207,10 @@ for epoch in range(num_epoch):
             else:
                 stop_at -= 1
 
-            print("Epoch: %d, Batch: %d, Loss: %.4f, Dev Acc: %.2f, RMSE: %.3f" % (epoch, i, avg_loss, dev_acc*100, dev_rmse))
+            #print("Epoch: %d, Batch: %d, Loss: %.4f, Dev Acc: %.2f, RMSE: %.3f" % (epoch, i, avg_loss, dev_acc*100, dev_rmse))
+            print("Epoch: %d, Batch: %d, Loss: %.4f, Dev Acc: %.2f, DEV RMSE: %.3f, Test Acc: %.2f, Test RMSE: %.3f" \
+             % (epoch, i, avg_loss, dev_acc*100, dev_rmse, test_acc*100, test_rmse))
             losses = []
             eval_at = evaluate_every
 
-print(best_dev_acc, best_rmse)
+print(best_dev_acc, best_rmse, best_test_acc, best_test_rmse)
