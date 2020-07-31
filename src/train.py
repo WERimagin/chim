@@ -214,5 +214,7 @@ for epoch in range(num_epoch):
              % (epoch, i, avg_loss, dev_acc*100, dev_rmse, test_acc*100, test_rmse))
             losses = []
             eval_at = evaluate_every
+        if stop_at<=0:
+            break
 
 print(best_dev_acc, best_rmse, best_test_acc, best_test_rmse)
