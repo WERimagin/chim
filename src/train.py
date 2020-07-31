@@ -21,7 +21,7 @@ num_epoch = 300
 batch_size = 32
 #evaluate_every = 10000
 #training_stopper = 30
-evaluate_every = 100
+#evaluate_every = 100
 training_stopper = 1
 best_dev_acc = 0
 best_rmse = 100
@@ -146,7 +146,7 @@ x_test = test_data['x']
 c_test = test_data['c']
 y_test = test_data['y']
 
-evaluate_every = len(x_train) // 10
+evaluate_every = len(x_train) // 1000
 
 eval_at = evaluate_every
 stop_at = training_stopper
