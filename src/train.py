@@ -146,7 +146,7 @@ x_test = test_data['x']
 c_test = test_data['c']
 y_test = test_data['y']
 
-evaluate_every = len(x_train) // 1000
+evaluate_every = len(x_train) // 100
 
 eval_at = evaluate_every
 stop_at = training_stopper
