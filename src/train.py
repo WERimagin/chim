@@ -21,8 +21,8 @@ num_epoch = 300
 batch_size = 32
 #evaluate_every = 10000
 #training_stopper = 30
-evaluate_every = 10
-training_stopper = 1
+evaluate_every = 100
+training_stopper = 2
 best_dev_acc = 0
 best_rmse = 100
 best_test_acc = 0
@@ -68,7 +68,7 @@ def test(x_dev,c_dev,y_dev,batch_size,model):
     dev_acc = 0
     dev_rmse = 0
     with torch.no_grad():
-        for j in range(0, len(x_dev), batch_size):
+        for j in tqdm(range(0, len(x_dev), batch_size)):
             model.eval()
 
             x_batch, m_batch = utils.pad(x_dev[j:j+batch_size])
@@ -187,6 +187,7 @@ for epoch in range(num_epoch):
         #これはtrain数の1/10,つまり3epochの間精度が更新されなかったら終了
         eval_at -= len(x_batch)
         if eval_at <= 0:
+            print("start testing")
             avg_loss = np.mean(losses)
             dev_acc,dev_rmse=test(x_dev,c_dev,y_dev,batch_size,model)
             test_acc,test_rmse=test(x_test,c_test_y_test,batch_size,model)
