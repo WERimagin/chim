@@ -68,7 +68,7 @@ def test(x_dev,c_dev,y_dev,batch_size,model):
     dev_acc = 0
     dev_rmse = 0
     with torch.no_grad():
-        for j in tqdm(range(0, len(x_dev), batch_size)):
+        for j in range(0, len(x_dev), batch_size):
             model.eval()
 
             x_batch, m_batch = utils.pad(x_dev[j:j+batch_size])
@@ -165,7 +165,6 @@ for epoch in range(num_epoch):
 
     losses = []
     for i in range(0, len(x_train), batch_size):
-        print(eval_at)
         model.train()
 
         x_batch, m_batch = utils.pad(x_shuffle[i:i+batch_size])
@@ -188,7 +187,6 @@ for epoch in range(num_epoch):
         #これはtrain数の1/10,つまり3epochの間精度が更新されなかったら終了
         eval_at -= len(x_batch)
         if eval_at <= 0:
-            print("start testing")
             avg_loss = np.mean(losses)
             dev_acc,dev_rmse=test(x_dev,c_dev,y_dev,batch_size,model)
             test_acc,test_rmse=test(x_test,c_test,y_test,batch_size,model)
@@ -214,7 +212,5 @@ for epoch in range(num_epoch):
              % (epoch, i, avg_loss, dev_acc*100, dev_rmse, test_acc*100, test_rmse))
             losses = []
             eval_at = evaluate_every
-        if stop_at<=0:
-            break
 
 print(best_dev_acc, best_rmse, best_test_acc, best_test_rmse)
