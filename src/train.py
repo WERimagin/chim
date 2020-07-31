@@ -155,6 +155,7 @@ rev_label_dict = {label_dict[label]:label for label in label_dict}
 
 #訓練
 for epoch in range(num_epoch):
+    print(stop_at)
     if stop_at <= 0:
         break
 
@@ -190,7 +191,7 @@ for epoch in range(num_epoch):
             print("start testing")
             avg_loss = np.mean(losses)
             dev_acc,dev_rmse=test(x_dev,c_dev,y_dev,batch_size,model)
-            test_acc,test_rmse=test(x_test,c_test_,y_test,batch_size,model)
+            test_acc,test_rmse=test(x_test,c_test,y_test,batch_size,model)
 
 
             if best_dev_acc <= dev_acc:
