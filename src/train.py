@@ -144,12 +144,13 @@ x_test = test_data['x']
 c_test = test_data['c']
 y_test = test_data['y']
 
-evaluate_every = len(x_train) // 10
+evaluate_every = len(x_train) // 1000
 
 eval_at = evaluate_every
 stop_at = training_stopper
 
 rev_label_dict = {label_dict[label]:label for label in label_dict}
+print(rev_label_dict)
 
 #訓練
 for epoch in range(num_epoch):
